@@ -1,40 +1,23 @@
 /**
- * Blued New Flash Image Redirect
- * 针对 cdn.qing2000.com 域名优化
+ * Blued Flash Redirect - Anti-Loop Version
+ * 解决无限套娃方案：通过 User-Agent 过滤
  */
 
 const url = $request.url;
-const logName = "[BluedFlashNew]";
+const ua = $request.headers['User-Agent'] || $request.headers['user-agent'] || "";
 
-(async () => {
-    if (!url) {
-        $done({});
-        return;
-    }
+// 检查是否为 Safari 或非 Blued 流量
+// Blued 的 UA 通常包含 "Blued" 或 "BlueCity" 字样
+const isSafari = ua.includes("Safari") || ua.includes("AppleWebKit") && !ua.includes("Blued");
 
-    console.log(`${logName} 捕获到闪照: ${url}`);
-
-    // 1. 尝试写入剪贴板 (防止跳转后 Safari 报错需要二次手动输入)
+if (!url || isSafari) {
+    // 如果是浏览器访问，直接放行，不弹通知，不走逻辑
+    $done({});
+} else {
+    // 只有在 App 内部触发时才执行逻辑
     if (typeof $clipboard !== "undefined") {
         $clipboard.write(url);
-        console.log(`${logName} 链接已写入剪贴板`);
     }
-
-    // 2. 发送系统通知
-    $notification.post(
-        "检测到新版闪照",
-        "链接已复制，准备跳转 Safari",
-        "如果跳转失败，请手动在浏览器粘贴访问。\n链接：" + url
-    );
-
-    // 3. 核心逻辑：使用 307 临时重定向强制跳转
-    // 这样在 App 尝试加载图片时，会直接触发系统层面的 URL 唤起
-    $done({
-        status: "HTTP/1.1 307 Temporary Redirect",
-        headers: {
-            "Location": url,
-            "X-Redirect-By": "Gemini-Script"
-        },
-        body: ""
-    });
-})();
+    $notification.post("检测到闪照", "链接已复制", "请前往 Safari 粘贴查看");
+    $done({});
+}
