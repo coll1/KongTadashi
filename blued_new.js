@@ -1,23 +1,39 @@
 /**
- * Blued Flash Redirect - Anti-Loop Version
- * 解决无限套娃方案：通过 User-Agent 过滤
+ * Blued Flash Redirect - The Ultimate Anti-Loop Version
+ * 方案：使用 $persistentStore 实现 URL 访问去重
  */
 
 const url = $request.url;
-const ua = $request.headers['User-Agent'] || $request.headers['user-agent'] || "";
+const logName = "[BluedAntiLoop]";
 
-// 检查是否为 Safari 或非 Blued 流量
-// Blued 的 UA 通常包含 "Blued" 或 "BlueCity" 字样
-const isSafari = ua.includes("Safari") || ua.includes("AppleWebKit") && !ua.includes("Blued");
-
-if (!url || isSafari) {
-    // 如果是浏览器访问，直接放行，不弹通知，不走逻辑
+// 1. 基础判断
+if (!url || !url.includes("private-flash-photo")) {
     $done({});
 } else {
-    // 只有在 App 内部触发时才执行逻辑
-    if (typeof $clipboard !== "undefined") {
-        $clipboard.write(url);
+    // 2. 获取该 URL 的上一次捕获时间
+    const lastTime = $persistentStore.read(url);
+    const currentTime = Date.now();
+
+    // 3. 逻辑判断：如果该 URL 在 10 秒内被捕获过，说明是 Safari 重复访问或重定向，直接放行
+    if (lastTime && (currentTime - parseInt(lastTime) < 10000)) {
+        console.log(`${logName} 拦截到重复请求 (套娃)，已自动放行: ${url}`);
+        $done({});
+    } else {
+        // 4. 首次捕获逻辑
+        // 记录当前时间戳到持久化存储
+        $persistentStore.write(currentTime.toString(), url);
+        
+        console.log(`${logName} 首次捕获闪照，执行通知逻辑`);
+
+        // 执行写入剪贴板
+        if (typeof $clipboard !== "undefined") {
+            $clipboard.write(url);
+        }
+
+        // 发送通知
+        $notification.post("检测到闪照", "链接已复制", "请前往 Safari 粘贴查看 (10秒内重复访问将不再弹窗)");
+
+        // 5. 结束脚本并放行
+        $done({});
     }
-    $notification.post("检测到闪照", "链接已复制", "请前往 Safari 粘贴查看");
-    $done({});
 }
