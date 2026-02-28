@@ -1,39 +1,49 @@
 /**
- * Blued Flash Redirect - The Ultimate Anti-Loop Version
- * 方案：使用 $persistentStore 实现 URL 访问去重
+ * Blued Flash Redirect - Fix Clipboard & Anti-Loop
+ * 修复：通知带链接、增强剪贴板兼容性、防止套娃
  */
 
 const url = $request.url;
-const logName = "[BluedAntiLoop]";
+const logName = "[BluedFlash]";
 
-// 1. 基础判断
-if (!url || !url.includes("private-flash-photo")) {
-    $done({});
-} else {
-    // 2. 获取该 URL 的上一次捕获时间
+(async () => {
+    if (!url || !url.includes("private-flash-photo")) {
+        return $done({});
+    }
+
+    // --- 1. 防止套娃逻辑 (10秒内重复请求不处理) ---
     const lastTime = $persistentStore.read(url);
     const currentTime = Date.now();
 
-    // 3. 逻辑判断：如果该 URL 在 10 秒内被捕获过，说明是 Safari 重复访问或重定向，直接放行
     if (lastTime && (currentTime - parseInt(lastTime) < 10000)) {
-        console.log(`${logName} 拦截到重复请求 (套娃)，已自动放行: ${url}`);
-        $done({});
-    } else {
-        // 4. 首次捕获逻辑
-        // 记录当前时间戳到持久化存储
-        $persistentStore.write(currentTime.toString(), url);
-        
-        console.log(`${logName} 首次捕获闪照，执行通知逻辑`);
+        console.log(`${logName} 检查到重复请求，跳过逻辑: ${url}`);
+        return $done({});
+    }
 
-        // 执行写入剪贴板
+    // 记录本次处理时间
+    $persistentStore.write(currentTime.toString(), url);
+
+    // --- 2. 执行核心逻辑 ---
+    console.log(`${logName} 捕获成功: ${url}`);
+
+    // 尝试写入剪贴板 (兼容性写法)
+    try {
         if (typeof $clipboard !== "undefined") {
+            // 某些版本 Surge 需要显式调用 write
             $clipboard.write(url);
         }
-
-        // 发送通知
-        $notification.post("检测到闪照", "链接已复制", "请前往 Safari 粘贴查看 (10秒内重复访问将不再弹窗)");
-
-        // 5. 结束脚本并放行
-        $done({});
+    } catch (e) {
+        console.log(`${logName} 剪贴板写入失败: ${e}`);
     }
-}
+
+    // --- 3. 推送通知 (包含原始链接) ---
+    // 在通知中展示 URL，方便点击或手动复制
+    $notification.post(
+        "检测到新版闪照", 
+        "链接已尝试复制到剪贴板", 
+        `原始链接：${url}`
+    );
+
+    // --- 4. 立即结束，不阻塞 App 加载 ---
+    $done({});
+})();
