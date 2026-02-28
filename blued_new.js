@@ -1,49 +1,38 @@
 /**
- * Blued Flash Redirect - Fix Clipboard & Anti-Loop
- * 修复：通知带链接、增强剪贴板兼容性、防止套娃
+ * Blued Flash Redirect - Stable Logic
+ * 功能：纯通知、带20秒冷却时间、无跳转、无剪贴板干扰
  */
 
 const url = $request.url;
 const logName = "[BluedFlash]";
+const COOLDOWN_TIME = 20000; // 冷却时间 20 秒
 
 (async () => {
     if (!url || !url.includes("private-flash-photo")) {
         return $done({});
     }
 
-    // --- 1. 防止套娃逻辑 (10秒内重复请求不处理) ---
+    // --- 1. 冷却逻辑：20秒内重复链接不捕获 ---
     const lastTime = $persistentStore.read(url);
     const currentTime = Date.now();
 
-    if (lastTime && (currentTime - parseInt(lastTime) < 10000)) {
-        console.log(`${logName} 检查到重复请求，跳过逻辑: ${url}`);
+    if (lastTime && (currentTime - parseInt(lastTime) < COOLDOWN_TIME)) {
+        console.log(`${logName} 20秒内重复请求，静默处理: ${url}`);
         return $done({});
     }
 
-    // 记录本次处理时间
+    // 记录本次处理时间（存入持久化数据）
     $persistentStore.write(currentTime.toString(), url);
 
-    // --- 2. 执行核心逻辑 ---
-    console.log(`${logName} 捕获成功: ${url}`);
+    // --- 2. 核心通知逻辑 ---
+    console.log(`${logName} 捕获成功，发送通知: ${url}`);
 
-    // 尝试写入剪贴板 (兼容性写法)
-    try {
-        if (typeof $clipboard !== "undefined") {
-            // 某些版本 Surge 需要显式调用 write
-            $clipboard.write(url);
-        }
-    } catch (e) {
-        console.log(`${logName} 剪贴板写入失败: ${e}`);
-    }
-
-    // --- 3. 推送通知 (包含原始链接) ---
-    // 在通知中展示 URL，方便点击或手动复制
     $notification.post(
-        "检测到新版闪照", 
-        "链接已尝试复制到剪贴板", 
+        "检测到闪照请求",
+        "链接已捕获（20s内重复点击将不再提醒）",
         `原始链接：${url}`
     );
 
-    // --- 4. 立即结束，不阻塞 App 加载 ---
+    // --- 3. 结束脚本，确保 App 加载图片流畅 ---
     $done({});
 })();
